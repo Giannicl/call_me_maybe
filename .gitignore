@@ -1,0 +1,12 @@
+# Generated at review time: must not be committed (subject VIII)
+data/output/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/

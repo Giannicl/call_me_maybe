@@ -1,0 +1,45 @@
+[project]
+name = "call-me-maybe"
+version = "0.1.0"
+description = "Natural language to structured function calls via constrained decoding."
+readme = "README.md"
+requires-python = ">=3.10"
+# src/ imports only numpy and pydantic. torch, transformers and huggingface-hub
+# are here purely because the bundled llm_sdk/ package needs them at runtime.
+# Nothing under src/ imports them.
+dependencies = [
+    "numpy>=1.24",
+    "pydantic>=2.0",
+    "torch>=2.0.0",
+    "transformers>=4.40.0",
+    "huggingface-hub>=0.20.0",
+]
+
+[dependency-groups]
+dev = [
+    "flake8>=6.0",
+    "mypy>=1.5",
+]
+
+# This is an application, not a library. uv manages the environment but does not
+# build or install the project itself: we run it from source via python -m src.
+[tool.uv]
+package = false
+
+[tool.mypy]
+warn_unused_ignores = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+exclude = ['^llm_sdk/', '^build/']
+
+# The bundled SDK and its heavy deps are provided code, not type-checked here.
+[[tool.mypy.overrides]]
+module = [
+    "llm_sdk", "llm_sdk.*",
+    "torch", "torch.*",
+    "transformers", "transformers.*",
+    "huggingface_hub", "huggingface_hub.*",
+]
+ignore_missing_imports = true
+ignore_errors = true
+follow_imports = "skip"
