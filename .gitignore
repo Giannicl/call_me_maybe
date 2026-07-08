@@ -10,3 +10,6 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
+
+# Yarvis project identity (local + Proton, never the code repo)
+.sync-state
