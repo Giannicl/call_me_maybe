@@ -1,10 +1,10 @@
-"""Typing surface for the parts of llm_sdk.Small_LLM_Model we depend on.
+"""Typing surface for the parts of ``llm_sdk.Small_LLM_Model`` we depend on.
 
-The provided SDK ships without type stubs, so importing it directly leaves mypy
-seeing Any everywhere. Instead we program against a small typing Protocol.
-Any object exposing these four methods, the real Small_LLM_Model or a test
-double, satisfies it. That keeps the rest of the package fully typed and makes
-the decoding engine easy to unit test.
+The provided SDK ships without type stubs, so importing it directly leaves
+``mypy`` seeing ``Any`` everywhere.  We instead program against this small
+:class:`typing.Protocol`.  Any object exposing these four methods (the real
+``Small_LLM_Model`` *or* a test double) satisfies it, which keeps the rest of
+the package fully typed and makes the engine trivially unit-testable.
 """
 
 from __future__ import annotations
@@ -15,13 +15,13 @@ from typing import Any, List, Protocol
 class LLM(Protocol):
     """Structural type for the frozen language model we drive.
 
-    Only the methods this project actually calls are listed. The real SDK
-    exposes get_path_to_vocab_file (not the get_path_to_vocabulary_json named
-    in the subject), so the signatures follow the SDK, not the subject text.
+    Only the methods this project actually calls are listed.  The signatures
+    follow the *real* SDK source (``llm_sdk/llm_sdk/__init__.py``), which
+    differs from the subject's description of the API.
     """
 
     def encode(self, text: str) -> Any:
-        """Return a 2-D input_ids tensor for text, without special tokens."""
+        """Return a 2-D ``input_ids`` tensor for *text* (no special tokens)."""
         ...
 
     def decode(self, ids: Any) -> str:
@@ -33,5 +33,5 @@ class LLM(Protocol):
         ...
 
     def get_path_to_vocab_file(self) -> str:
-        """Return the local path to the downloaded vocab.json."""
+        """Return the local path to the downloaded ``vocab.json``."""
         ...

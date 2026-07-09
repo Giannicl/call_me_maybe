@@ -1,6 +1,6 @@
 # Makefile for "call me maybe". Uses uv for environment management.
 
-.PHONY: install run debug clean lint lint-strict
+.PHONY: install run debug clean lint lint-strict test
 
 install:
 	uv sync
@@ -10,6 +10,9 @@ run:
 
 debug:
 	uv run python -m pdb -m src
+
+test:
+	uv run pytest -q
 
 lint:
 	uv run flake8 .
@@ -21,5 +24,5 @@ lint-strict:
 	uv run mypy . --strict
 
 clean:
-	rm -rf __pycache__ */__pycache__ */*/__pycache__ .mypy_cache
+	rm -rf __pycache__ */__pycache__ */*/__pycache__ .mypy_cache .pytest_cache
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +

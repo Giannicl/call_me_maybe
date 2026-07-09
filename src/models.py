@@ -1,33 +1,36 @@
-"""Pydantic data models for the input and output files.
+"""Pydantic data models for inputs and outputs.
 
-The subject requires every class to be a pydantic model, so validation happens
-at the boundary and the rest of the code can assume well-shaped data. These
-models mirror the JSON files under data/input and the result objects written to
-data/output.
+Every class in the project is a ``pydantic`` model (subject requirement IV.1):
+validation happens at the boundary, so the rest of the code can assume the data
+is already well-shaped.  These mirror the JSON files under ``data/input`` and the
+result objects written to ``data/output``.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Argument types a function definition may declare. The provided data uses
-# only "number" and "string", but "integer" and "boolean" are supported as
-# well, so the tool still works if a review-time definition adds them.
-ParamType = Literal["number", "integer", "string", "boolean"]
-
 
 class ParameterSpec(BaseModel):
-    """Schema of a single function parameter, e.g. {"type": "number"}."""
+    """The schema of a single function parameter (e.g. ``{"type": "number"}``).
+
+    ``type`` is deliberately a plain ``str``, not a closed enum: review-time
+    definitions may declare types this tool does not special-case (``array``,
+    ``object``, anything else), and an unrecognised type must degrade
+    gracefully — it is routed through the string path downstream — rather
+    than fail validation and kill the whole run.  A missing ``type`` defaults
+    to ``"string"`` for the same reason.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
-    type: ParamType
+    type: str = "string"
 
 
 class FunctionDefinition(BaseModel):
-    """One callable function, as described in functions_definition.json."""
+    """One callable function as described in ``functions_definition.json``."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -38,7 +41,7 @@ class FunctionDefinition(BaseModel):
 
 
 class TestPrompt(BaseModel):
-    """A single natural-language request from function_calling_tests.json."""
+    """A single natural-language request from ``function_calling_tests.json``."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -46,10 +49,10 @@ class TestPrompt(BaseModel):
 
 
 class CallResult(BaseModel):
-    """One output record: exactly prompt, name and parameters.
+    """One output ticket: exactly ``prompt``, ``name`` and ``parameters``.
 
-    Dumping this model with model_dump yields precisely the three keys the
-    output contract requires, with no extras.
+    Serialising this model with :py:meth:`model_dump` yields precisely the three
+    keys the output contract (subject V.4) requires — no extras.
     """
 
     prompt: str

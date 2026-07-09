@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "Natural language to structured function calls via constrained decoding."
 readme = "README.md"
 requires-python = ">=3.10"
-# src/ imports only numpy and pydantic. torch, transformers and huggingface-hub
-# are here purely because the bundled llm_sdk/ package needs them at runtime.
-# Nothing under src/ imports them.
+# Our own code imports only numpy and pydantic. torch / transformers /
+# huggingface-hub are listed solely because the bundled `llm_sdk/` package needs
+# them at runtime — they are NEVER imported by anything under `src/`.
 dependencies = [
     "numpy>=1.24",
     "pydantic>=2.0",
@@ -19,10 +19,11 @@ dependencies = [
 dev = [
     "flake8>=6.0",
     "mypy>=1.5",
+    "pytest>=7.0",
 ]
 
-# This is an application, not a library. uv manages the environment but does not
-# build or install the project itself: we run it from source via python -m src.
+# This is an application, not a library: uv manages the environment but does not
+# try to build/install the project itself. We run it from source via `python -m src`.
 [tool.uv]
 package = false
 
@@ -30,9 +31,9 @@ package = false
 warn_unused_ignores = true
 disallow_untyped_defs = true
 check_untyped_defs = true
-exclude = ['^llm_sdk/', '^build/']
+exclude = ['^docs/', '^llm_sdk/', '^\.artifacts/', '^build/']
 
-# The bundled SDK and its heavy deps are provided code, not type-checked here.
+# The bundled SDK and its heavy deps are provided code we do not type-check.
 [[tool.mypy.overrides]]
 module = [
     "llm_sdk", "llm_sdk.*",

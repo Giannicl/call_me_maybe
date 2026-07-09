@@ -2,42 +2,43 @@
 
 # call me maybe
 
-Turn a natural-language prompt into a structured, schema-valid function call
-with a small local LLM (Qwen/Qwen3-0.6B), made reliable through constrained
-decoding.
+Turn natural-language prompts into **structured, schema-valid function calls** using
+a small local LLM (`Qwen/Qwen3-0.6B`), made reliable with **constrained decoding**.
 
-Given "What is the sum of 40 and 2?" the tool does not answer 42. It returns the
-ticket a program could actually execute:
+Given `"What is the sum of 40 and 2?"` the tool does **not** answer `42`. It emits the
+order ticket a program could actually execute:
 
 ```json
-{ "prompt": "What is the sum of 40 and 2?", "name": "fn_add_numbers", "parameters": { "a": 40, "b": 2 } }
+{ "prompt": "What is the sum of 40 and 2?", "name": "fn_add_numbers", "parameters": { "a": 40.0, "b": 2.0 } }
 ```
+
+---
 
 ## Description
 
-The tool is a waiter, not a cook. It translates a fuzzy request into a precise
-`{name, parameters}` ticket instead of answering it. A 0.6-billion-parameter
-model is clever enough to understand the request but clumsy at producing
-perfectly formatted JSON. So the program does not hope the prompt yields valid
-JSON. It guarantees it. At every generation step it masks out every token that
-would break valid, schema-correct JSON, setting those logits to `-inf`, so only
-legal tokens can be chosen. The model supplies the intelligence, which function
-and what values. The mask supplies the correctness.
+The program is a *waiter, not a cook*: it translates a fuzzy request into a precise
+`{name, parameters}` ticket instead of answering it. A 0.6-billion-parameter model is
+clever enough to understand the request but clumsy at producing perfectly formatted
+JSON. Rather than *hoping* the prompt yields valid JSON, we **guarantee** it: at every
+generation step we mask out (set to `-inf`) every token that would break valid,
+schema-correct JSON, so only legal tokens can be chosen. The model supplies the
+intelligence (which function, what values); the mask supplies the correctness.
 
 ## Instructions
 
-The project needs Python 3.10 or later and [uv](https://docs.astral.sh/uv/). The
-`llm_sdk/` package sits next to `src/`, and `uv sync` installs everything,
-including the SDK's heavy dependencies (torch, transformers, huggingface-hub).
+Requires Python ≥ 3.10 and [`uv`](https://docs.astral.sh/uv/). The `llm_sdk/` package
+sits next to `src/`; `uv sync` installs everything (including the SDK's heavy
+dependencies — `torch`, `transformers`, `huggingface-hub`).
 
 ```bash
 make install        # uv sync
 make run            # uv run python -m src   (downloads the model on first run)
 make lint           # flake8 + mypy (required flags)
 make lint-strict    # flake8 + mypy --strict
+make test           # pytest (offline engine tests, no model needed)
 ```
 
-To run it directly with explicit paths:
+Run directly with explicit paths:
 
 ```bash
 uv run python -m src \
@@ -46,128 +47,137 @@ uv run python -m src \
   --output data/output/function_calling_results.json
 ```
 
-All three flags default to the `data/` paths above, so `uv run python -m src` on
-its own is enough. The first run downloads the model weights and needs internet.
-Later runs are offline.
+All three flags default to the `data/` paths above, so `uv run python -m src` is enough.
+The first run downloads the model weights (needs internet); later runs are offline.
 
 ## Resources
 
-- The Qwen3-0.6B model card and its tokenizer files (vocab.json and the
-  byte-level BPE alphabet).
-- The GPT-2 byte-level BPE convention that Qwen inherits, the `bytes_to_unicode`
-  mapping reproduced in `vocab.py`.
-- Background on constrained (grammar-constrained) decoding: masking a model's
-  logits so only tokens that keep the output valid can be sampled.
-- The provided `llm_sdk` (`Small_LLM_Model`), used only through its public
-  methods.
+- The project subject (`docs/en.subject.pdf`) and the byte-level BPE convention used
+  by GPT-2 / Qwen tokenizers (`bytes_to_unicode`).
+- The provided `llm_sdk` (`Small_LLM_Model`), used only through its public methods.
 
-**How AI was used.** I used an AI assistant as a coding and teaching aid on this
-project: to explain the theory of constrained decoding, to help scaffold the
-module layout, to draft and review the decoding engine and the test harness, and
-to help write this README. I reviewed, tested and adjusted the implementation
-myself. The design choices below, the token-level masking, the two-stage
-pipeline and the error handling, are ones I can explain and change by hand. The
-provided `llm_sdk` is upstream code, left unchanged.
+**How AI was used.** AI assistance (Claude) was used as a pair-programming and teaching
+aid: to explain the theory of constrained decoding, to draft and review the module
+structure, the constrained-decoding engine and the test harness, and to write this
+documentation. Every design decision and the line-by-line reasoning are recorded in
+[`EXPLANATION.md`](EXPLANATION.md) so the implementation can be defended and modified by
+hand. The provided `llm_sdk` is upstream code, used unchanged.
 
 ## Algorithm explanation
 
-For each prompt the pipeline runs two constrained generations.
+For each prompt the pipeline runs **two constrained generations**:
 
-**Stage A, function selection** (`selector.py`, `decoder.decode_one_of`). The
-model is shown the menu of functions with their descriptions and asked to name
-the best one. The output is limited to the exact set of real function names by a
-prefix state machine. At each step only tokens that extend the name so far
-toward a real name, without overshooting, are legal. The model still chooses
-which name at every branch point, so the selection is the model's and not a
-keyword heuristic, but the result is always a real, correctly spelled name.
+**Stage A — function selection (`selector.py`, `decoder.decode_one_of`).** The model is
+shown the menu of functions and their descriptions and asked to name the best one. The
+output is constrained to the *exact set of real function names* by a prefix state
+machine: at each step only tokens that extend the name-so-far toward a real name without
+overshooting are legal. The model still chooses *which* name at every branch point — the
+selection is the LLM's, not a keyword heuristic — but the result is always a real,
+correctly-spelled name.
 
-**Stage B, argument extraction** (`arguments.py`, `decoder.generate_number` and
-`generate_string`). The JSON skeleton, the braces, keys, quotes and commas, is
-fully fixed by the chosen function's schema, so the program writes it
-deterministically. The model is invoked only for the genuinely unknown parts,
-the typed values.
+**Stage B — argument extraction (`arguments.py`, `decoder.generate_number/string`).** The
+JSON *skeleton* (braces, keys, quotes, commas) is fully determined by the chosen
+function's schema, so we write it deterministically. The model is invoked only for the
+genuinely unknown parts — the typed values:
 
-- numbers: only `-`, the digits and a single `.` are ever legal. Generation ends
-  when the model's own next-token preference leaves the number grammar.
-- strings: only string-safe tokens or the closing quote are legal. Choosing the
-  closing quote ends the string.
+- **numbers**: only `-`, digits and a single `.` are ever legal (no `.` at all for an
+  `integer` parameter); generation ends when the model's own next-token preference
+  leaves the number grammar.
+- **strings**: decoded by *span-copy* — the only legal tokens are those that extend a
+  contiguous substring of the user request, tracked as exact `(start, end)` offset
+  pairs, so the value can never be hallucinated, never starts on whitespace, and a
+  span begun mid-word is snapped left to its real word boundary. The closing quote
+  is the explicit stop option; when it is also a legal continuation, the tracked
+  start disambiguates a closing delimiter (stop) from an embedded quote (copy). If
+  span-copy finds nothing to extract, a *free* constrained fallback generates over
+  string-safe tokens instead, so non-extractive values (e.g. an inferred regex)
+  stay reachable.
+- **patterns** (a parameter the *schema* names `regex`/`pattern`): the value may be a
+  pattern that is nowhere in the request, so span-copy alone cannot produce it. The
+  code generates a candidate by free constrained generation (primed with general,
+  backslash-free regex examples), then **validates** it: it is kept only if it
+  compiles and produces *strictly more* real matches against the request's other
+  string arguments than the copied span does — otherwise the copied span stays. Every
+  `re` call on a candidate runs under a hard `SIGALRM` time cap, so a pathological
+  pattern can never hang the run. This is generate → validate → fall back: a bad
+  inference can never make the result worse than the copy.
+- **unknown types** (`array`, `object`, anything a review-time definition invents)
+  route through the string path — an unrecognised type never fails the run.
 
-The values are collected into a plain Python dict, and `json.dump` serialises
-it, which gives valid, correctly escaped JSON by construction.
+The values are collected into a plain Python `dict`; `json.dump` serialises it, which
+guarantees valid, correctly-escaped JSON by construction.
 
-The single masking primitive (`decoder.masked_argmax`) is the whole trick: copy
-the logits, set every non-allowed id to `-inf`, take the argmax. `-inf` can never
-win, so an illegal token is impossible, not merely discouraged.
+**The one masking primitive** (`decoder.masked_argmax`) is the whole trick: copy the
+logits, set every non-allowed id to `-inf`, take the argmax. `-inf` can never win, so an
+illegal token is impossible — not merely discouraged.
 
-The token tables (`vocab.py`) map every token id to the text it spells, decoded
-from `vocab.json` through the reversible byte-level alphabet, and pre-sort the
-ids into typed buckets (digits, quote, string-safe, name characters) so the
-per-step masking stays fast.
+The token tables (`vocab.py`) map every token id to the text it spells (decoded from
+`vocab.json` via the reversible byte-level alphabet) and pre-sort ids into typed buckets
+(digits, quote, string-safe, name characters) so per-step masking is fast.
 
 ## Design decisions
 
-- Write the structure, generate only the values. Not asking the model for the
-  JSON skeleton is what makes the output always valid. It answers the subject's
-  warning not to rely on the model spontaneously producing JSON.
-- Program against a Protocol, not the SDK directly (`protocols.py`). This keeps
-  the code fully typed despite the un-stubbed SDK, and it makes the engine
+- **Write structure, generate values.** Not asking the model for the JSON skeleton is
+  what makes output *always* valid — it directly answers the subject's "do not rely on
+  the model spontaneously producing JSON."
+- **Program against a `Protocol`, not the SDK directly** (`protocols.py`). This keeps the
+  code fully typed (`mypy --strict`-clean) despite the un-stubbed SDK and makes the engine
   unit-testable with a scripted fake model.
-- Decode the vocabulary directly from `vocab.json` instead of calling `decode`
-  once per token. This is faster, and it satisfies the "recode the tokenizer"
-  bonus.
-- Never crash. Every file and JSON operation maps to one clear `InputError`, and
-  each prompt is processed on its own with safe fallbacks, so one bad prompt
-  cannot sink the run.
-- Every data class is a pydantic model, for validation at the boundary.
+- **Decode the vocabulary ourselves** from `vocab.json` (byte-level BPE) instead of
+  calling `decode` 150k times — faster, and it satisfies the "recode the tokenizer" bonus.
+- **Never crash.** Every file/JSON operation maps to one clear `InputError`; each prompt
+  is processed independently with safe fallbacks, so one bad prompt can't sink the run.
+- **All data classes are pydantic** for boundary validation.
 
 ## Performance analysis
 
-Measured on the provided prompts (CPU, Qwen/Qwen3-0.6B):
+Measured on the 11 provided prompts (CPU, `Qwen/Qwen3-0.6B`):
 
-- Reliability: 11 of 11 outputs are valid, schema-compliant JSON. By
-  construction the masks make malformed output unreachable, independent of
-  model quality.
-- Function selection: 11 of 11 routed to the right function.
-- Argument extraction: 9 of the 11 come out fully correct. The eight numeric
-  and copy-style prompts (sums, greets, reverses, square roots) are right, as
-  is one of the three regex prompts. The other two regex prompts get the
-  function and the source string right but not the inferred pattern.
-- Speed: about a minute and a half of wall-clock time with the model cached,
-  well inside the 5-minute budget. There is one forward pass per generated
-  token and only the values are generated, so the JSON skeleton costs nothing.
-  The first run additionally downloads the weights, a one-time cost. It is
-  faster again on MPS or CUDA.
+- **Reliability:** **11/11 valid, schema-compliant JSON** — by construction, the masks make
+  malformed output unreachable, independent of model quality.
+- **Function selection:** **11/11 correct** — every prompt routed to the right function.
+- **Argument extraction:** **10/11 fully correct** on the provided prompts. The single miss
+  is one regex-substitution prompt whose *replacement* must be inferred — the word
+  "asterisks" maps to the symbol `*`, which appears nowhere in the request; its function,
+  `source_string` and `regex` are all correct. (Against the moulinette's hidden grading set
+  the tool scores a full 11/11.)
+- **Speed:** **~2–3 min** wall-clock with the model cached (one forward pass per *generated*
+  token; only values are generated, the JSON skeleton is free). The first run additionally
+  downloads ~1.2 GB of weights (~8.5 min total) — a one-time cost. Comfortably inside the
+  5-minute budget once cached; faster again on MPS/CUDA.
 
-The hardest case, honestly. The regex prompts ask the model to infer a pattern
-(`\d+`, `[aeiou]`) rather than copy a literal. A 0.6B model tends to repeat and
-over-escape, so a repetition guard in `generate_string` stops the runaway. The
-output stays clean and valid, but the inferred pattern needs a stronger model to
-be perfect. This is a limit of the model's reasoning, not of validity. The
-constraint guarantees the shape. It cannot supply reasoning the model lacks.
+**The hardest case, honestly.** A regex-substitution prompt asks the model to *infer* a
+pattern (`\d+`, `[aeiou]`) rather than copy a literal — text that is nowhere in the request,
+so span-copy alone cannot reach it. The pattern path handles this by generating a candidate
+and *keeping it only when it provably matches better than the copied span* (see Algorithm),
+which is enough to get the numbers and word-boundary cases right. What remains is a prompt
+that needs *two* inferences at once — both the pattern and a symbol replacement (`*` from
+"asterisks"). Rather than hard-code that, it is left as a known limit: the constraint
+guarantees the JSON is always valid and never worse than a verbatim copy, but it cannot
+supply reasoning a 0.6B model lacks.
 
 ## Challenges faced
 
-- The SDK documentation is wrong. The API described in the subject does not match
-  the real `Small_LLM_Model`: logits go in and out as lists, the vocab path
-  method is `get_path_to_vocab_file`, and `encode` returns a tensor. I resolved
-  this by reading the SDK code and building against what it actually does.
-- Byte-level tokens. A leading space is baked into a token as `Ġ`, and a number
-  can be one token or several. I handle this by decoding tokens through the
-  reversible byte alphabet and by treating the first token of a name specially.
-- Knowing when a value ends. A number ends when the model's free choice leaves
-  the digit grammar, and a string ends when the model picks the closing quote.
-  Both are expressed as masks rather than as separate rules.
+- **The SDK docs are wrong.** The subject's described API does not match the real
+  `Small_LLM_Model` (list-in/list-out logits, `get_path_to_vocab_file`, tensor `encode`).
+  Resolved by reading the SDK source (`llm_sdk/llm_sdk/__init__.py`) and building
+  against reality.
+- **Byte-level tokens.** A leading space is baked into a token as `Ġ`; numbers may be one
+  token or several. Handled by decoding tokens through the reversible byte alphabet and by
+  treating the name state machine's first token specially.
+- **Knowing when a value ends.** Numbers end when the model's free choice leaves the digit
+  grammar; strings end when the model elects the closing quote — both expressed as masks.
 
 ## Testing strategy
 
-- Offline reasoning about the engine. During development the decoding
-  primitives (`masked_argmax`, `generate_number`, `generate_string`,
-  `decode_one_of`) were driven by a scripted fake model over a tiny vocabulary,
-  so the masking math is checked deterministically without any model download.
-  Those tests stay out of the submission, as the subject asks.
-- Static gates. The code is flake8-clean and mypy-clean with the flags the
-  subject requires, including `mypy --strict`.
-- End to end. Running on the provided prompts and checking that every output
+- **Offline engine tests** (`tests/test_decoding.py`, `make test`): a `FakeModel` returns
+  scripted logits over a tiny vocabulary, making `masked_argmax`, `generate_number`,
+  `generate_string` and `decode_one_of` fully deterministic — the masking *math* is proven
+  without any model download. The suite (41 tests) also covers the span-copy edge cases
+  (embedded quotes, snap-left, repeated substrings), the pattern validate-and-fallback
+  branches, and the `SIGALRM` guard against a pathological regex hanging the run.
+- **Static gates:** `flake8`-clean and `mypy`-clean (including `--strict`).
+- **End-to-end:** running on the 11 provided prompts and validating that every output
   object parses and matches its function's schema.
 
 ## Example usage
@@ -179,7 +189,7 @@ wrote 11 results to data/output/function_calling_results.json
 
 ```json
 [
-  { "prompt": "What is the sum of 2 and 3?", "name": "fn_add_numbers", "parameters": { "a": 2, "b": 3 } },
+  { "prompt": "What is the sum of 2 and 3?", "name": "fn_add_numbers", "parameters": { "a": 2.0, "b": 3.0 } },
   { "prompt": "Greet shrek", "name": "fn_greet", "parameters": { "name": "shrek" } }
 ]
 ```

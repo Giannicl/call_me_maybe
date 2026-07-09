@@ -1,9 +1,9 @@
-"""Command-line entry point: python -m src.
+"""Command-line entry point: ``python -m src``.
 
-Loads the function definitions and test prompts, loads the model once, builds
-the token tables, processes every prompt with constrained decoding, and writes
-the results array. Any expected failure (bad input, a model-load error, an
-unwritable output) is reported as one clear line, never a stack trace.
+Loads the function definitions and test prompts, loads the model once, builds the
+token tables, processes every prompt with constrained decoding, and writes the
+results array.  Any expected failure (bad input, model load error, unwritable
+output) is reported as a single clear line — never a stack trace.
 """
 
 from __future__ import annotations
@@ -25,22 +25,22 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse the command-line arguments."""
     parser = argparse.ArgumentParser(
         prog="python -m src",
-        description="Turn prompts into structured function calls.",
+        description="Turn natural-language prompts into structured function calls.",
     )
     parser.add_argument(
         "--functions_definition",
         default=_DEFAULT_FUNCTIONS,
-        help=f"function definitions JSON (default: {_DEFAULT_FUNCTIONS})",
+        help=f"path to the function definitions JSON (default: {_DEFAULT_FUNCTIONS})",
     )
     parser.add_argument(
         "--input",
         default=_DEFAULT_INPUT,
-        help=f"test prompts JSON (default: {_DEFAULT_INPUT})",
+        help=f"path to the test prompts JSON (default: {_DEFAULT_INPUT})",
     )
     parser.add_argument(
         "--output",
         default=_DEFAULT_OUTPUT,
-        help=f"results JSON to write (default: {_DEFAULT_OUTPUT})",
+        help=f"path to write results JSON (default: {_DEFAULT_OUTPUT})",
     )
     return parser.parse_args(argv)
 
@@ -63,13 +63,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         from llm_sdk import Small_LLM_Model
         model = Small_LLM_Model()
-    except Exception as exc:  # any model-load failure becomes a message
+    except Exception as exc:  # noqa: BLE001 - surface any load failure cleanly
         print(f"error: could not load model: {exc}", file=sys.stderr)
         return 1
 
     tables = build_token_tables(model)
-    prompt_texts = [p.prompt for p in prompts]
-    results = process_all(model, prompt_texts, functions, tables)
+    results = process_all(model, [p.prompt for p in prompts], functions, tables)
 
     try:
         write_results(args.output, results)

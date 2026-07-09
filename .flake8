@@ -1,2 +1,5 @@
 [flake8]
-extend-exclude = llm_sdk,.venv,venv,build,__pycache__
+max-line-length = 90
+extend-exclude = .artifacts,docs,llm_sdk,.venv,venv,build,__pycache__
+# E203/W503 conflict with how black-style code and slices are formatted.
+extend-ignore = E203,W503
