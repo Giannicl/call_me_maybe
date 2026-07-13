@@ -1,5 +1,3 @@
-# Makefile for "call me maybe". Uses uv for environment management.
-
 .PHONY: install run debug clean lint lint-strict test
 
 install:

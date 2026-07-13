@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by giannicl.*
+*This project has been created as part of the 42 curriculum by glieuw-a.*
 
 # call me maybe
 
@@ -56,12 +56,7 @@ The first run downloads the model weights (needs internet); later runs are offli
   by GPT-2 / Qwen tokenizers (`bytes_to_unicode`).
 - The provided `llm_sdk` (`Small_LLM_Model`), used only through its public methods.
 
-**How AI was used.** AI assistance (Claude) was used as a pair-programming and teaching
-aid: to explain the theory of constrained decoding, to draft and review the module
-structure, the constrained-decoding engine and the test harness, and to write this
-documentation. Every design decision and the line-by-line reasoning are recorded in
-[`EXPLANATION.md`](EXPLANATION.md) so the implementation can be defended and modified by
-hand. The provided `llm_sdk` is upstream code, used unchanged.
+**How AI was used.** AI assistance was used as a teaching aid: to explain the theory of constrained decoding and the constrained-decoding engine, as well as for to review the code. The AI assistant was instructed to not give the solution but guide using the socratic method.
 
 ## Algorithm explanation
 
