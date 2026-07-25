@@ -1,9 +1,9 @@
-"""Reading, validating and writing the JSON files — defensively.
+"""Read, validate and write the JSON files, defensively.
 
-The subject demands the tool *never crash* on bad input.  Every filesystem and
-JSON operation here funnels its failure into a single :class:`InputError` with a
-clear message, which ``__main__`` turns into a friendly one-line error instead of
-a stack trace.  All file access uses context managers.
+The subject demands the tool never crash on bad input. Every filesystem and JSON
+operation here funnels its failure into a single `InputError` with a clear
+message, which `__main__` turns into a friendly one-line error instead of a
+stack trace. All file access uses context managers.
 """
 
 from __future__ import annotations
@@ -22,7 +22,17 @@ class InputError(Exception):
 
 
 def _read_json(path: str) -> Any:
-    """Load and parse a JSON file, mapping every failure to :class:`InputError`."""
+    """Load and parse a JSON file, mapping every failure to `InputError`.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The parsed JSON.
+
+    Raises:
+        InputError: If the file is missing, unreadable or not valid JSON.
+    """
     try:
         with open(path, "r", encoding="utf-8") as handle:
             return json.load(handle)
@@ -38,7 +48,7 @@ def load_functions(path: str) -> List[FunctionDefinition]:
     """Load and validate the function definitions array.
 
     Args:
-        path: Path to ``functions_definition.json``.
+        path: Path to `functions_definition.json`.
 
     Returns:
         The validated function definitions.
@@ -60,7 +70,7 @@ def load_prompts(path: str) -> List[TestPrompt]:
     """Load and validate the test prompts array.
 
     Args:
-        path: Path to ``function_calling_tests.json``.
+        path: Path to `function_calling_tests.json`.
 
     Returns:
         The validated prompts.
@@ -82,7 +92,7 @@ def write_results(path: str, results: List[CallResult]) -> None:
     """Write results as a JSON array, creating the output directory if needed.
 
     Args:
-        path: Destination file (e.g. ``data/output/function_calling_results.json``).
+        path: Destination file, e.g. `data/output/function_calling_results.json`.
         results: The call results to serialise.
 
     Raises:

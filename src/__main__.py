@@ -1,9 +1,9 @@
-"""Command-line entry point: ``python -m src``.
+"""Command-line entry point: `python -m src`.
 
-Loads the function definitions and test prompts, loads the model once, builds the
-token tables, processes every prompt with constrained decoding, and writes the
-results array.  Any expected failure (bad input, model load error, unwritable
-output) is reported as a single clear line — never a stack trace.
+Loads the function definitions and test prompts, loads the model once, builds
+the token tables, processes every prompt with constrained decoding, then writes
+the results array. Every expected failure reports as a single clear line, never
+a stack trace: bad input, a model load error, an unwritable output.
 """
 
 from __future__ import annotations
@@ -22,7 +22,14 @@ _DEFAULT_OUTPUT = "data/output/function_calling_results.json"
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    """Parse the command-line arguments."""
+    """Parse the command-line arguments.
+
+    Args:
+        argv: The argument list to parse. Defaults to `sys.argv`.
+
+    Returns:
+        The parsed arguments.
+    """
     parser = argparse.ArgumentParser(
         prog="python -m src",
         description="Turn natural-language prompts into structured function calls.",
@@ -46,7 +53,14 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    """Run the tool end to end. Returns a process exit code."""
+    """Run the tool end to end.
+
+    Args:
+        argv: The argument list to parse. Defaults to `sys.argv`.
+
+    Returns:
+        The process exit code: 0 on success, 1 on any expected failure.
+    """
     args = parse_args(argv)
 
     try:
@@ -63,7 +77,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         from llm_sdk import Small_LLM_Model
         model = Small_LLM_Model()
-    except Exception as exc:  # noqa: BLE001 - surface any load failure cleanly
+    except Exception as exc:
         print(f"error: could not load model: {exc}", file=sys.stderr)
         return 1
 

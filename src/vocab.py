@@ -1,25 +1,25 @@
 """Token tables: map every token id to its text and group ids by type.
 
-Constrained decoding needs to know, for any token id, *what characters it spells*
-so it can decide whether that token is legal right now.  We build that map once
+Constrained decoding needs to know, for any token id, what characters it spells,
+so it can decide whether that token is legal right now. We build that map once
 (a few seconds) and precompute the id-sets the masks reuse every step:
 
-* ``digit_ids`` / ``minus_ids`` / ``dot_ids`` — the pieces of a JSON number,
-* ``string_or_quote`` — every token safe inside a JSON string, plus the closing
-  quote that ends one (drives the free-generation fallback for values that are
-  not substrings of the prompt, e.g. an inferred regex),
-* ``name_candidates`` — tokens made only of function-name characters, used by the
-  function-name state machine,
-* ``text_to_ids`` / ``max_token_len`` — the reverse map (token text -> ids), used
-  by the span-copy string decoder to probe substrings of the prompt without ever
+* `digit_ids` / `minus_ids` / `dot_ids`: the pieces of a JSON number.
+* `string_or_quote`: every token safe inside a JSON string, plus the closing
+  quote that ends one. Drives the free-generation fallback for values that are
+  not substrings of the prompt, e.g. an inferred regex.
+* `name_candidates`: tokens made only of function-name characters, used by the
+  function-name state machine.
+* `text_to_ids` / `max_token_len`: the reverse map (token text -> ids), used by
+  the span-copy string decoder to probe substrings of the prompt without ever
   scanning the whole vocabulary.
 
-Token text comes from ``vocab.json`` (path via ``get_path_to_vocab_file``).  Qwen
-uses *byte-level BPE*: each token string is written in a reversible alphabet where,
-for example, a leading space is the character ``Ġ``.  :func:`bytes_to_unicode`
-gives the byte→character map; we invert it to recover the real bytes, then UTF-8
-decode.  Doing it this way (instead of calling ``decode`` 150k times) is both
-faster and satisfies the optional "recode the tokenizer" bonus.
+Token text comes from `vocab.json` (path via `get_path_to_vocab_file`). Qwen
+uses byte-level BPE: each token string is written in a reversible alphabet
+where, for example, a leading space is the character `Ġ`. `bytes_to_unicode`
+gives the byte-to-character map. We invert it to recover the real bytes, then
+UTF-8 decode. Doing it this way instead of calling `decode` 150k times is
+faster, and it satisfies the optional "recode the tokenizer" bonus.
 """
 
 from __future__ import annotations
@@ -32,7 +32,6 @@ from pydantic import BaseModel, ConfigDict
 
 from .protocols import LLM
 
-# Characters that may appear in a function name (Qwen names: fn_add_numbers, ...).
 NAME_CHARS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
 )
@@ -42,10 +41,13 @@ _DIGITS = frozenset("0123456789")
 def bytes_to_unicode() -> Dict[int, str]:
     """Return the GPT-2/Qwen byte-level BPE map: byte value -> printable char.
 
-    Every one of the 256 byte values is mapped to a unique unicode character so a
-    token string is always printable and reversible.  Bytes that are already
-    printable map to themselves; the rest (spaces, controls, high bytes) map to
-    code points starting at 256 — this is why a space shows up as ``Ġ``.
+    Every one of the 256 byte values maps to a unique unicode character, so a
+    token string is always printable and reversible. Bytes that are already
+    printable map to themselves. The rest (spaces, controls, high bytes) map to
+    code points starting at 256, which is why a space shows up as `Ġ`.
+
+    Returns:
+        The byte value to character map.
     """
     printable = (
         list(range(ord("!"), ord("~") + 1))
@@ -63,12 +65,20 @@ def bytes_to_unicode() -> Dict[int, str]:
 
 
 def _decode_token(token: str, byte_decoder: Dict[str, int]) -> str:
-    """Decode one byte-level token string back to its real text."""
+    """Decode one byte-level token string back to its real text.
+
+    Args:
+        token: The token string in the byte-level alphabet.
+        byte_decoder: The character to byte map (the inverse of
+            `bytes_to_unicode`).
+
+    Returns:
+        The decoded text, or the token unchanged if a character falls outside
+        the alphabet.
+    """
     try:
         raw = bytes(byte_decoder[ch] for ch in token)
     except KeyError:
-        # Token contains a character outside the byte alphabet (rare added
-        # tokens); fall back to the literal string.
         return token
     return raw.decode("utf-8", errors="replace")
 
@@ -76,8 +86,15 @@ def _decode_token(token: str, byte_decoder: Dict[str, int]) -> str:
 def _build_id_to_text(model: LLM, vocab_size: int) -> List[str]:
     """Build the id -> text table, sized to the model's logits vector.
 
-    Falls back to the SDK's ``decode`` if ``vocab.json`` cannot be read, so the
-    tool still works rather than crashing.
+    Falls back to the SDK's `decode` if `vocab.json` cannot be read, so the tool
+    still works rather than crashing.
+
+    Args:
+        model: The language model, for the vocab file path and the fallback.
+        vocab_size: The length of the logits vector, which sizes the table.
+
+    Returns:
+        The id -> text table, one entry per vocabulary id.
     """
     id_to_text: List[str] = [""] * vocab_size
     byte_decoder = {ch: byte for byte, ch in bytes_to_unicode().items()}
@@ -94,16 +111,23 @@ def _build_id_to_text(model: LLM, vocab_size: int) -> List[str]:
 
 
 def _has_control(text: str) -> bool:
-    """True if *text* contains a character illegal inside a raw JSON string."""
+    """True if the text contains a character illegal inside a raw JSON string.
+
+    Args:
+        text: The token text to check.
+
+    Returns:
+        True when a control character is present.
+    """
     return any(ord(ch) < 0x20 for ch in text)
 
 
 class TokenTables(BaseModel):
     """Immutable lookup tables shared by every decoding step.
 
-    ``arbitrary_types_allowed`` is enabled so we can store the precomputed numpy
-    index arrays the masks use (numpy fancy-indexing is what makes per-step
-    masking fast).
+    `arbitrary_types_allowed` is enabled so we can store the precomputed numpy
+    index arrays the masks use. Numpy fancy-indexing is what makes per-step
+    masking fast.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -126,8 +150,14 @@ class TokenTables(BaseModel):
 def tables_from_id_to_text(id_to_text: List[str]) -> TokenTables:
     """Compute every typed id-set from a finished id -> text table.
 
-    Split out from :func:`build_token_tables` so unit tests can build tables from
-    a tiny hand-written vocabulary without a real model.
+    Split out from `build_token_tables` so unit tests can build tables from a
+    tiny hand-written vocabulary without a real model.
+
+    Args:
+        id_to_text: The id -> text table.
+
+    Returns:
+        The token tables, with every typed id-set and reverse map filled.
     """
     digit_ids: List[int] = []
     minus_ids: List[int] = []
@@ -151,12 +181,8 @@ def tables_from_id_to_text(id_to_text: List[str]) -> TokenTables:
             dot_ids.append(token_id)
         if text == '"':
             quote_id = token_id
-        # A token is string-safe if it contains no quote, backslash-free control
-        # char, or raw newline/tab — json.dump handles any remaining escaping.
         if '"' not in text and not _has_control(text):
             string_ids.append(token_id)
-        # Name-state-machine candidates: tokens that are pure name characters,
-        # optionally with one leading space (the Ġ marker on the first token).
         stripped = text[1:] if text.startswith(" ") else text
         if stripped and all(ch in NAME_CHARS for ch in stripped):
             name_candidates.append((token_id, stripped, text.startswith(" ")))
@@ -180,8 +206,14 @@ def tables_from_id_to_text(id_to_text: List[str]) -> TokenTables:
 
 
 def build_token_tables(model: LLM) -> TokenTables:
-    """Build the token tables for a loaded model (one-time setup)."""
-    # The logits vector length is the authoritative vocabulary size to mask over.
+    """Build the token tables for a loaded model. One-time setup.
+
+    Args:
+        model: The loaded language model.
+
+    Returns:
+        The token tables the decoding steps share.
+    """
     probe_ids: List[int] = list(model.encode("hi")[0].tolist())
     vocab_size = len(model.get_logits_from_input_ids(probe_ids))
     id_to_text = _build_id_to_text(model, vocab_size)

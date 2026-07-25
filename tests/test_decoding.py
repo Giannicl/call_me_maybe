@@ -32,7 +32,6 @@ from src.decoder import (
 from src.models import FunctionDefinition, ParameterSpec
 from src.vocab import tables_from_id_to_text
 
-# A minimal vocabulary covering digits, a quote, and a few name/letter tokens.
 VOCAB: List[str] = [
     "", '"', "-", ".",
     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -101,7 +100,7 @@ class ScriptedLogitsModel(FakeModel):
 def test_masked_argmax_ignores_forbidden_tokens() -> None:
     """The masked argmax must pick the best *allowed* id, never a higher illegal one."""
     logits = np.array([5.0, 9.0, 1.0, 7.0])
-    allowed = np.array([0, 2, 3])  # index 1 (the global max) is forbidden
+    allowed = np.array([0, 2, 3])
     assert masked_argmax(logits, allowed) == 3
 
 
@@ -123,9 +122,6 @@ def test_generate_string_copies_a_span_and_stops_on_quote() -> None:
 def test_generate_string_masks_non_substring_tokens() -> None:
     """A token that is not a span continuation is impossible, however preferred."""
     tables = tables_from_id_to_text(VOCAB)
-    # The model "wants" `greet`, but the source never contains it, so the mask
-    # forces a real substring instead; choosing the closing quote next then
-    # ends the value.
     model = FakeModel(VOCAB, wants=["greet"], stop='"')
     assert generate_string(model, [], tables, "hi") == "h"
 
@@ -148,8 +144,8 @@ def test_generate_string_continues_past_an_illegal_favourite() -> None:
     tables = tables_from_id_to_text(VOCAB)
     rows = [
         {"h": 10.0},
-        {"x": 10.0, "i": 5.0, '"': 1.0},  # raw favourite illegal — keep going
-        {'"': 10.0, "a": 1.0},  # quote beats the continuation — genuine stop
+        {"x": 10.0, "i": 5.0, '"': 1.0},
+        {'"': 10.0, "a": 1.0},
     ]
     model = ScriptedLogitsModel(VOCAB, rows)
     assert generate_string(model, [], tables, "hia") == "hi"
@@ -159,8 +155,8 @@ def test_generate_string_quote_stop_requires_one_copied_char() -> None:
     """The stop option is never offered before the first char is copied."""
     tables = tables_from_id_to_text(VOCAB)
     rows = [
-        {'"': 10.0, "h": 1.0, "i": 0.5},  # no quote in source: must copy "h"
-        {'"': 10.0},  # now the quote may end the span
+        {'"': 10.0, "h": 1.0, "i": 0.5},
+        {'"': 10.0},
     ]
     model = ScriptedLogitsModel(VOCAB, rows)
     assert generate_string(model, [], tables, "hi") == "h"
@@ -171,9 +167,9 @@ def test_generate_string_embedded_quote_continues_not_stops() -> None:
     tables = tables_from_id_to_text(VOCAB)
     rows = [
         {"h": 10.0},
-        {'"': 10.0},  # the next source char is a quote: copy it, do not stop
+        {'"': 10.0},
         {"i": 10.0},
-        {'"': 10.0, "a": 1.0},  # no longer a continuation: genuine stop
+        {'"': 10.0, "a": 1.0},
     ]
     model = ScriptedLogitsModel(VOCAB, rows)
     assert generate_string(model, [], tables, 'h"ia') == 'h"i'
@@ -189,10 +185,10 @@ def test_generate_string_snaps_left_to_the_word_boundary() -> None:
     """
     tables = tables_from_id_to_text(VOCAB)
     rows = [
-        {"a": 10.0, "/": 5.0},  # start mid-word, inside "/a/b"
+        {"a": 10.0, "/": 5.0},
         {"/": 10.0},
         {"b": 10.0},
-        {'"': 10.0, "h": 1.0},  # genuine stop
+        {'"': 10.0, "h": 1.0},
     ]
     model = ScriptedLogitsModel(VOCAB, rows)
     assert generate_string(model, [], tables, "read /a/b here") == "/a/b"
@@ -207,7 +203,7 @@ def test_generate_string_no_snap_when_already_at_a_boundary() -> None:
     tables = tables_from_id_to_text(VOCAB)
     rows = [
         {"h": 10.0},
-        {'"': 10.0},  # genuine stop
+        {'"': 10.0},
     ]
     model = ScriptedLogitsModel(VOCAB, rows)
     assert generate_string(model, [], tables, "say hi") == "h"
@@ -389,11 +385,9 @@ def test_regex_hits_counts_matches_and_rejects_broken_patterns() -> None:
     assert _regex_hits("[0-9]+", ["Hello 34 and 233"]) == 2
     assert _regex_hits("cat", ["The cat sat by a cat"]) == 2
     assert _regex_hits("34 I'm 233", ["Hello 34 I'm 233 years old"]) == 1
-    assert _regex_hits("(", ["Hello"]) == 0  # does not compile
-    assert _regex_hits("dog", ["The cat sat"]) == 0  # matches nothing
-    assert _regex_hits("", ["Hello"]) == 0  # empty is never usable
-    # The doubled-escape artefact a small model produces (`\\d+` re-escaped)
-    # compiles but matches nothing, so validation rejects it.
+    assert _regex_hits("(", ["Hello"]) == 0
+    assert _regex_hits("dog", ["The cat sat"]) == 0
+    assert _regex_hits("", ["Hello"]) == 0
     assert _regex_hits("\\\\d+", ["Hello 34"]) == 0
 
 
