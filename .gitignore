@@ -11,8 +11,5 @@ __pycache__/
 .venv/
 venv/
 
-# Yarvis project identity (local + Proton, never the code repo)
-.sync-state
-
 # pytest
 .pytest_cache/
